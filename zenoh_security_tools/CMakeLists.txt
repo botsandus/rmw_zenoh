@@ -17,7 +17,6 @@ find_package(nlohmann_json REQUIRED)
 find_package(rcpputils REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(rmw_security_common REQUIRED)
-find_package(tinyxml2_vendor REQUIRED)
 find_package(TinyXML2 REQUIRED)
 find_package(zenoh_cpp_vendor REQUIRED)
 
