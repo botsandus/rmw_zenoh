@@ -28,11 +28,15 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # By default, use commit id from branch ROS/zenoh-2687c5135.
-  # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  set(zenoh_c_commit 05bd370343b5161ca9269649b9a914c9c2dc4170)
+  # By default, use commit id from branch dexory/rmw-zenoh-cold-start-fixes of
+  # botsandus/zenoh-c (fork of eclipse-zenoh/zenoh-c@05bd3703).
+  # The fork pins zenoh deps to botsandus/zenoh which carries three patches:
+  #  1. gossip: release start_condition on stale-peer connect failure
+  #  2. gossip: release start_condition on peer-disconnect mid-handshake
+  #  3. zenoh-ext: retry AdvancedSubscriber initial historical query
+  # See https://github.com/botsandus/zenoh/tree/dexory/rmw-zenoh-cold-start-fixes
+  # and https://github.com/botsandus/zenoh-c/tree/dexory/rmw-zenoh-cold-start-fixes
+  set(zenoh_c_commit 028433f00557f8b61e8c7656fc87f0931c99483e)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
@@ -42,7 +46,7 @@ else()
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL https://github.com/eclipse-zenoh/zenoh-c.git
+    VCS_URL https://github.com/botsandus/zenoh-c.git
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
