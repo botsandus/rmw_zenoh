@@ -28,17 +28,13 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # By default, use commit id from branch ROS/zenoh-2687c5135.
-  # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  set(zenoh_c_commit 05bd370343b5161ca9269649b9a914c9c2dc4170)
+  # zenoh-c 1.9.0 (release tag).
+  set(zenoh_c_commit 499de93af63e6a7d3497313f544e666fea1d33fd)
 
-  # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
+  # If Rust version is below Zenoh MSRV, use the ROS/rust-1.75 branch which
+  # tracks the latest release with rust 1.75 compatibility patches.
   if(CARGO_VERSION VERSION_GREATER_EQUAL "1.75" AND CARGO_VERSION VERSION_LESS "1.88")
-    set(zenoh_c_commit b31348fa7f94f44f1f7b049c111a710e970a2725)
+    set(zenoh_c_commit 0193595c4d75bfd93b1cf7ec1b27c7132512b325)
   endif()
 
   ament_vendor(zenoh_c_vendor
@@ -52,7 +48,7 @@ else()
 
   ament_vendor(zenoh_cpp_vendor
     VCS_URL https://github.com/eclipse-zenoh/zenoh-cpp
-    VCS_VERSION 481b71bf974f684ea75afb4243b0313646d545f9
+    VCS_VERSION 78a5ab9c0130ed65f44d7bd1958398039fb14163
     CMAKE_ARGS
       -DZENOHCXX_ZENOHC=OFF
   )
