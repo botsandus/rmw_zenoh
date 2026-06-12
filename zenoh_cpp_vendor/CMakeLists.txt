@@ -32,7 +32,10 @@ else()
   # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
   # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  set(zenoh_c_commit 05bd370343b5161ca9269649b9a914c9c2dc4170)
+  # TESTING zenoh PR #2632 (SHM watchdog fix): botsandus/zenoh-c fork (05bd370 + upstream
+  # build fixes) with zenoh deps repointed at botsandus/zenoh@c6c3106a (snapshot of
+  # eclipse-zenoh/zenoh PR #2632 head, branch test-zenoh-pr2632).
+  set(zenoh_c_commit b4da6d9a681753118017c83881cb132620e5de71)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
@@ -42,7 +45,7 @@ else()
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL https://github.com/eclipse-zenoh/zenoh-c.git
+    VCS_URL https://github.com/botsandus/zenoh-c.git
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
