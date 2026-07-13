@@ -38,7 +38,7 @@ else()
   # botsandus/zenoh@dexory/query-no-shm, which patches io/zenoh-transport/src/shm.rs
   # to stop promoting query/reply payloads to SHM
   # (workaround for https://github.com/eclipse-zenoh/zenoh/issues/2628).
-  set(zenoh_c_commit 30ac98c3ad6d13fe11a498fec249fe708dd051ab)
+  set(zenoh_c_commit 24a32b81e7fd4e40e562d0b43d4309cbbe87525e)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
