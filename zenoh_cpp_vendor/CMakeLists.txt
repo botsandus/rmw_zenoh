@@ -33,12 +33,15 @@ else()
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
   # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
   #
-  # botsandus/zenoh-c@dexory/query-no-shm carries the same 1.8.0 base plus a
-  # rebuild of Cargo.lock pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util at
-  # botsandus/zenoh@dexory/query-no-shm, which patches io/zenoh-transport/src/shm.rs
-  # to stop promoting query/reply payloads to SHM
-  # (workaround for https://github.com/eclipse-zenoh/zenoh/issues/2628).
-  set(zenoh_c_commit 24a32b81e7fd4e40e562d0b43d4309cbbe87525e)
+  # botsandus/zenoh-c@dexory/fix-gossip-oam-deadlock carries the same 1.8.0 base
+  # plus a rebuild of Cargo.lock pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util
+  # at botsandus/zenoh@dexory/fix-gossip-oam-deadlock, which:
+  # - patches io/zenoh-transport/src/shm.rs to stop promoting query/reply payloads
+  #   to SHM (workaround for https://github.com/eclipse-zenoh/zenoh/issues/2628);
+  # - fixes the gossip/OAM ctrl_lock deadlock that randomly freezes one process
+  #   per bringup (https://github.com/eclipse-zenoh/zenoh/issues/2581): makes
+  #   StartConditions sync and drops both block_in_place sites.
+  set(zenoh_c_commit 3745615b6de88c18b53d59c104b549737e5a4da0)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
