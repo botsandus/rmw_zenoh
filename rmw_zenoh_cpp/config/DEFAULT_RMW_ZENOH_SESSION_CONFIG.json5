@@ -627,12 +627,7 @@
         sequence_number_resolution: "32bit",
         /// Link lease duration in milliseconds to announce to other zenoh nodes
         /// ROS setting: increase the value to avoid lease expiration at launch time with a large number of Nodes starting all together
-        /// Dexory: 60s -> 180s. Post-deadlock-fix, peer stalls are transient (large
-        /// transient-local replays drain in <=150s under bringup load); a 60s lease
-        /// turned them into permanent link kills (zenoh never reconnects a closed
-        /// peer link). Dead processes are still detected instantly via TCP teardown
-        /// on the loopback mesh, so the crash-detection cost is minimal.
-        lease: 180000,
+        lease: 60000,
         /// Number of keep-alive messages in a link lease duration. If no data is sent, keep alive
         /// messages will be sent at the configured time interval.
         /// NOTE: In order to consider eventual packet loss and transmission latency and jitter,
@@ -682,10 +677,7 @@
               /// if still no batch is available.
               /// ROS setting: increase the value to avoid unecessary link closure at launch time where congestion is likely
               ///              to occur even over the loopback since all the Nodes are starting at the same time.
-              /// Dexory: 60s -> 180s, matching the lease bump above. The ~73MB
-              /// transient-local grid replays need 60-150s to drain at bringup;
-              /// closing at 60s permanently dropped healthy publishers off the graph.
-              wait_before_close: 180000000,
+              wait_before_close: 60000000,
             },
           },
           /// Perform batching of messages if they are smaller of the batch_size
