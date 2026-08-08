@@ -43,8 +43,11 @@ else()
   #   StartConditions sync and drops both block_in_place sites;
   # - fixes the undeclare-from-callback self-deadlock (SyncGroup::wait called
   #   on the rx thread from ~SubscriptionData via ze_undeclare_advanced_subscriber
-  #   parks the rx thread forever): drains callbacks asynchronously in that case.
-  set(zenoh_c_commit 23a6ca84f57c09c7f13ce3732a00f1e5be2130c7)
+  #   parks the rx thread forever): drains callbacks asynchronously in that case;
+  # - finalizes queries whose request fails transport scheduling (closed/closing
+  #   link under churn) instead of silently dropping them — service calls fail
+  #   fast and retryably instead of hanging their full timeout.
+  set(zenoh_c_commit 298d729e2744d9613dd267ea839ab712b04c355d)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
