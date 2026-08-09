@@ -143,7 +143,10 @@ private:
 
   // Handle finalization (drop) of the query issued as `attempt` for
   // `sequence_id`: erase the bookkeeping if the request was replied to or
-  // retries are exhausted, otherwise re-issue the query.
+  // retries are exhausted, otherwise re-issue the query after an
+  // exponential backoff. Runs on a zenoh callback thread that must never
+  // block, so the backoff sleep and the re-issue are performed on a
+  // short-lived detached thread.
   void on_query_finalized(int64_t sequence_id, std::size_t attempt);
 
   // Record that a reply (ok or error) was received for `sequence_id`.

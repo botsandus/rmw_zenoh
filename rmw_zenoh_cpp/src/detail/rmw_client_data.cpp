@@ -16,6 +16,7 @@
 
 #include <fastcdr/FastBuffer.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -26,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -88,7 +90,7 @@ int64_t parse_non_negative_int_envar(const char * envar_name, int64_t default_va
 // Tunables for the bounded service-request retry, each read once on first
 // use:
 //
-// RMW_ZENOH_SERVICE_REQUEST_RETRIES (default 2): maximum number of times a
+// RMW_ZENOH_SERVICE_REQUEST_RETRIES (default 3): maximum number of times a
 // service request is re-issued after its zenoh query was finalized without
 // any reply. Under connectivity churn the transport can fail to schedule
 // the query message, in which case the query is finalized immediately
@@ -101,10 +103,19 @@ int64_t parse_non_negative_int_envar(const char * envar_name, int64_t default_va
 // reached the server (e.g. it timed out while the server was processing
 // it), and re-sending a possibly-delivered non-idempotent request is worse
 // than failing.
+//
+// Each re-issue is delayed by an exponential backoff: 100 ms before
+// attempt 2, 500 ms before attempt 3 and 2000 ms before attempt 4 (and any
+// later attempt), clamped so the re-issue still happens inside the retry
+// window. Production evidence showed that immediate re-issues are useless:
+// the first send and every retry all fast-finalized within ~20 ms, inside
+// the same connectivity-failure window, after which the request was
+// reported lost. The default schedule totals 2600 ms, which fits the
+// default 5000 ms retry window.
 std::size_t service_request_max_retries()
 {
   static const std::size_t retries = static_cast<std::size_t>(
-    parse_non_negative_int_envar("RMW_ZENOH_SERVICE_REQUEST_RETRIES", 2));
+    parse_non_negative_int_envar("RMW_ZENOH_SERVICE_REQUEST_RETRIES", 3));
   return retries;
 }
 
@@ -113,6 +124,19 @@ std::chrono::milliseconds service_request_retry_window()
   static const std::chrono::milliseconds window{
     parse_non_negative_int_envar("RMW_ZENOH_SERVICE_REQUEST_RETRY_WINDOW_MS", 5000)};
   return window;
+}
+
+// Backoff to apply before re-issuing attempt `next_attempt` (>= 2).
+std::chrono::milliseconds service_request_retry_backoff(std::size_t next_attempt)
+{
+  static constexpr std::chrono::milliseconds schedule[] = {
+    std::chrono::milliseconds(100),
+    std::chrono::milliseconds(500),
+    std::chrono::milliseconds(2000)};
+  static constexpr std::size_t schedule_size = sizeof(schedule) / sizeof(schedule[0]);
+  const std::size_t index = next_attempt < 2 ?
+    0 : std::min(next_attempt - 2, schedule_size - 1);
+  return schedule[index];
 }
 
 // Whether the current thread is inside ClientData::issue_query(). zenoh-c
@@ -586,6 +610,7 @@ void ClientData::on_query_finalized(int64_t sequence_id, std::size_t attempt)
   std::vector<uint8_t> request_payload;
   std::size_t next_attempt = 0;
   std::string service_name;
+  std::chrono::milliseconds backoff{0};
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = in_flight_requests_.find(sequence_id);
@@ -635,15 +660,51 @@ void ClientData::on_query_finalized(int64_t sequence_id, std::size_t attempt)
     next_attempt = request.attempts;
     request_payload = request.request_bytes;
     service_name = entity_->topic_info().value().name_;
+    // Back off before re-issuing, clamped so the re-issue still happens
+    // inside the retry window. `elapsed < window` was checked above, so
+    // the remaining budget is positive.
+    backoff = std::min(
+      service_request_retry_backoff(next_attempt),
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        service_request_retry_window() - elapsed));
   }
   RMW_ZENOH_LOG_WARN_NAMED(
     "rmw_zenoh_cpp",
     "Query for service request to '%s' with sequence_id %" PRId64
-    " was finalized without a reply; re-issuing (attempt %zu of %zu).",
-    service_name.c_str(), sequence_id, next_attempt,
-    1 + service_request_max_retries());
-  // Re-issue outside mutex_ (see ros2/rmw_zenoh#484).
-  this->issue_query(sequence_id, next_attempt, request_payload);
+    " was finalized without a reply; re-issuing in %" PRId64
+    " ms (attempt %zu of %zu).",
+    service_name.c_str(), sequence_id, static_cast<int64_t>(backoff.count()),
+    next_attempt, 1 + service_request_max_retries());
+  // This method runs on a zenoh callback thread that must never block, so
+  // the backoff sleep and the re-issue run on a short-lived detached
+  // thread. Retries are rare (the transport failed to schedule a query),
+  // so spawning one thread per retry is acceptable. The thread only holds
+  // a weak_ptr: it re-checks liveness, shutdown and the in-flight entry
+  // after the sleep, and issues the query outside mutex_ (see
+  // ros2/rmw_zenoh#484).
+  std::weak_ptr<ClientData> client_data = shared_from_this();
+  std::thread(
+    [client_data, sequence_id, next_attempt, backoff,
+    request_payload = std::move(request_payload)]() {
+      std::this_thread::sleep_for(backoff);
+      auto sub_data = client_data.lock();
+      if (sub_data == nullptr || sub_data->is_shutdown()) {
+        return;
+      }
+      {
+        std::lock_guard<std::mutex> lock(sub_data->mutex_);
+        auto it = sub_data->in_flight_requests_.find(sequence_id);
+        if (it == sub_data->in_flight_requests_.end() ||
+        it->second.replied || it->second.attempts != next_attempt)
+        {
+          // The request was answered, superseded, or dropped (e.g. the
+          // client shut down and cleared the bookkeeping) while backing
+          // off; nothing to re-issue.
+          return;
+        }
+      }
+      sub_data->issue_query(sequence_id, next_attempt, request_payload);
+    }).detach();
 }
 
 ///=============================================================================
