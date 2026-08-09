@@ -17,6 +17,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -25,6 +26,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <zenoh.hxx>
 
@@ -101,6 +103,21 @@ public:
   ~ClientData();
 
 private:
+  // Bookkeeping for one in-flight service request, used to re-issue the
+  // zenoh query if it is finalized without any reply (e.g. when the
+  // transport failed to schedule the query under connectivity churn).
+  struct InFlightRequest
+  {
+    // Serialized request payload, kept so the query can be re-issued.
+    std::vector<uint8_t> request_bytes;
+    // Number of times the query has been issued (1 == initial send).
+    std::size_t attempts;
+    // When the request was first sent, used to bound the retry window.
+    std::chrono::steady_clock::time_point first_sent_time;
+    // Whether any reply (ok or error) was received for this request.
+    bool replied;
+  };
+
   // Constructor.
   ClientData(
     const rmw_node_t * rmw_node,
@@ -112,6 +129,25 @@ private:
     const void * response_type_support_impl,
     std::shared_ptr<RequestTypeSupport> request_type_support,
     std::shared_ptr<ResponseTypeSupport> response_type_support);
+
+  // Issue the zenoh query for the service request with the given
+  // sequence_id, using the serialized request payload. `attempt` is the
+  // value of the in-flight entry's attempt counter when this query is
+  // issued. Must be called WITHOUT mutex_ held: calling querier_.get()
+  // while holding mutex_ can trigger the ABBA deadlock documented in
+  // https://github.com/ros2/rmw_zenoh/issues/484.
+  rmw_ret_t issue_query(
+    int64_t sequence_id,
+    std::size_t attempt,
+    const std::vector<uint8_t> & request_payload);
+
+  // Handle finalization (drop) of the query issued as `attempt` for
+  // `sequence_id`: erase the bookkeeping if the request was replied to or
+  // retries are exhausted, otherwise re-issue the query.
+  void on_query_finalized(int64_t sequence_id, std::size_t attempt);
+
+  // Record that a reply (ok or error) was received for `sequence_id`.
+  void mark_query_replied(int64_t sequence_id);
 
   // Shutdown this ClientData.
   rmw_ret_t shutdown();
@@ -137,6 +173,8 @@ private:
   std::shared_ptr<ResponseTypeSupport> response_type_support_;
   // Deque to store the replies in the order they arrive.
   std::deque<std::unique_ptr<rmw_zenoh_cpp::ZenohReply>> reply_queue_;
+  // In-flight service requests keyed by sequence_id. Guarded by mutex_.
+  std::unordered_map<int64_t, InFlightRequest> in_flight_requests_;
   // Wait set data.
   rmw_wait_set_data_t * wait_set_data_;
   // Data callback manager.

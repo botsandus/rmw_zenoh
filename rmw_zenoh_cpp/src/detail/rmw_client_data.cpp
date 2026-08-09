@@ -17,7 +17,11 @@
 #include <fastcdr/FastBuffer.h>
 
 #include <array>
+#include <cerrno>
+#include <chrono>
 #include <cinttypes>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -39,6 +43,8 @@
 
 #include "rcpputils/scope_exit.hpp"
 
+#include "rcutils/env.h"
+
 #include "rmw/error_handling.h"
 #include "rmw/get_topic_endpoint_info.h"
 #include "rmw/impl/cpp/macros.hpp"
@@ -47,6 +53,77 @@
 
 namespace rmw_zenoh_cpp
 {
+namespace
+{
+///=============================================================================
+// Parse a non-negative integer environment variable, returning
+// default_value if the variable is unset, empty, or invalid.
+int64_t parse_non_negative_int_envar(const char * envar_name, int64_t default_value)
+{
+  const char * envar_value = nullptr;
+  if (nullptr != rcutils_get_env(envar_name, &envar_value)) {
+    RMW_ZENOH_LOG_WARN_NAMED(
+      "rmw_zenoh_cpp",
+      "Unable to read environment variable %s, using default value %" PRId64 ".",
+      envar_name, default_value);
+    return default_value;
+  }
+  if (envar_value == nullptr || strcmp(envar_value, "") == 0) {
+    return default_value;
+  }
+  char * end = nullptr;
+  errno = 0;
+  const int64_t value = std::strtoll(envar_value, &end, 10);
+  if (errno != 0 || end == envar_value || *end != '\0' || value < 0) {
+    RMW_ZENOH_LOG_WARN_NAMED(
+      "rmw_zenoh_cpp",
+      "Invalid value '%s' for environment variable %s, using default value %" PRId64 ".",
+      envar_value, envar_name, default_value);
+    return default_value;
+  }
+  return value;
+}
+
+///=============================================================================
+// Tunables for the bounded service-request retry, each read once on first
+// use:
+//
+// RMW_ZENOH_SERVICE_REQUEST_RETRIES (default 2): maximum number of times a
+// service request is re-issued after its zenoh query was finalized without
+// any reply. Under connectivity churn the transport can fail to schedule
+// the query message, in which case the query is finalized immediately
+// (ResponseFinal with zero replies); without a retry the rcl request would
+// pend forever.
+//
+// RMW_ZENOH_SERVICE_REQUEST_RETRY_WINDOW_MS (default 5000): a request is
+// only re-issued if the failed query lived for less than this window since
+// the request was first sent. A query that lived longer may well have
+// reached the server (e.g. it timed out while the server was processing
+// it), and re-sending a possibly-delivered non-idempotent request is worse
+// than failing.
+std::size_t service_request_max_retries()
+{
+  static const std::size_t retries = static_cast<std::size_t>(
+    parse_non_negative_int_envar("RMW_ZENOH_SERVICE_REQUEST_RETRIES", 2));
+  return retries;
+}
+
+std::chrono::milliseconds service_request_retry_window()
+{
+  static const std::chrono::milliseconds window{
+    parse_non_negative_int_envar("RMW_ZENOH_SERVICE_REQUEST_RETRY_WINDOW_MS", 5000)};
+  return window;
+}
+
+// Whether the current thread is inside ClientData::issue_query(). zenoh-c
+// drops the reply closure inline when z_querier_get fails synchronously,
+// which fires the on_drop handler re-entrantly on this thread. This flag
+// lets on_query_finalized() distinguish that local failure (keep the
+// original "return an error to the caller" semantics, no retry) from an
+// asynchronous query finalization (retry candidate).
+thread_local bool issuing_query_on_this_thread = false;
+}  // namespace
+
 ///=============================================================================
 std::shared_ptr<ClientData> ClientData::make(
   std::shared_ptr<zenoh::Session> session,
@@ -388,31 +465,61 @@ rmw_ret_t ClientData::send_request(
     static_cast<const void *>(ros_request),
     *sequence_id);
 
-  // Send request
+  // Track the in-flight request so that the on_drop closure of the query
+  // can detect a query that was finalized without any reply (e.g. when the
+  // transport failed to schedule the request under connectivity churn) and
+  // re-issue it. The entry must be inserted before the query is issued:
+  // the reply and drop closures may fire before querier_.get() returns.
+  std::vector<uint8_t> request_payload(
+    reinterpret_cast<const uint8_t *>(request_bytes),
+    reinterpret_cast<const uint8_t *>(request_bytes) + data_length);
+  in_flight_requests_.emplace(
+    *sequence_id,
+    InFlightRequest{request_payload, 1, std::chrono::steady_clock::now(), false});
+
+  // We explicitly release the mutex here to avoid an ABBA deadlock as
+  // documented in https://github.com/ros2/rmw_zenoh/issues/484.
+  lock.unlock();
+  return this->issue_query(*sequence_id, 1, request_payload);
+}
+
+///=============================================================================
+rmw_ret_t ClientData::issue_query(
+  int64_t sequence_id,
+  std::size_t attempt,
+  const std::vector<uint8_t> & request_payload)
+{
+  // NOTE: This method must be called WITHOUT mutex_ held: calling
+  // querier_.get() while holding mutex_ can trigger the ABBA deadlock
+  // documented in https://github.com/ros2/rmw_zenoh/issues/484.
   auto opts = zenoh::Querier::GetOptions::create_default();
   int64_t source_timestamp = rmw_zenoh_cpp::get_system_time_in_ns();
   opts.attachment = rmw_zenoh_cpp::AttachmentData(
-    *sequence_id, source_timestamp, entity_->copy_gid()).serialize_to_zbytes();
+    sequence_id, source_timestamp, entity_->copy_gid()).serialize_to_zbytes();
 
-  std::vector<uint8_t> raw_bytes(
-    reinterpret_cast<const uint8_t *>(request_bytes),
-    reinterpret_cast<const uint8_t *>(request_bytes) + data_length);
+  std::vector<uint8_t> raw_bytes(request_payload);
   opts.payload = zenoh::Bytes(std::move(raw_bytes));
 
   std::weak_ptr<rmw_zenoh_cpp::ClientData> client_data = shared_from_this();
   zenoh::ZResult result;
   std::string parameters;
-  // We explicitly release the mutex here to avoid an ABBA deadlock as
-  // documented in https://github.com/ros2/rmw_zenoh/issues/484.
-  lock.unlock();
+  issuing_query_on_this_thread = true;
+  auto restore_issuing_flag = rcpputils::make_scope_exit(
+    []() {issuing_query_on_this_thread = false;});
   querier_.get(
     parameters,
-    [client_data](const zenoh::Reply & reply) {
+    [client_data, sequence_id](const zenoh::Reply & reply) {
+      auto sub_data = client_data.lock();
+      if (sub_data != nullptr) {
+        // Mark the request as replied even for an error reply: an error
+        // reply proves the round-trip worked, so the on_drop closure must
+        // not re-issue the request.
+        sub_data->mark_query_replied(sequence_id);
+      }
       if (!reply.is_ok()) {
         auto reply_err_str = reply.get_err().get_payload().as_string();
-        auto locked_client_data = client_data.lock();
-        if (locked_client_data != nullptr && locked_client_data->entity_ != nullptr) {
-          auto topic_info = locked_client_data->entity_->topic_info();
+        if (sub_data != nullptr && sub_data->entity_ != nullptr) {
+          auto topic_info = sub_data->entity_->topic_info();
           if (topic_info.has_value()) {
             RMW_ZENOH_LOG_ERROR_NAMED(
               "rmw_zenoh_cpp",
@@ -434,7 +541,6 @@ rmw_ret_t ClientData::send_request(
       }
       const zenoh::Sample & sample = reply.get_ok();
 
-      auto sub_data = client_data.lock();
       if (sub_data == nullptr) {
         RMW_ZENOH_LOG_ERROR_NAMED(
           "rmw_zenoh_cpp",
@@ -450,16 +556,104 @@ rmw_ret_t ClientData::send_request(
       sub_data->add_new_reply(
         std::make_unique<rmw_zenoh_cpp::ZenohReply>(reply, get_system_time_in_ns()));
     },
-    zenoh::closures::none,
+    [client_data, sequence_id, attempt]() {
+      // This closure is invoked on a zenoh thread once the query is
+      // finalized (ResponseFinal received, query timed out, or the query
+      // dropped without ever being scheduled). Keep it non-blocking.
+      auto sub_data = client_data.lock();
+      if (sub_data == nullptr || sub_data->is_shutdown()) {
+        return;
+      }
+      sub_data->on_query_finalized(sequence_id, attempt);
+    },
     std::move(opts),
     &result);
   if (result != Z_OK) {
+    // The reply closure was dropped inline by the failed get, so the
+    // in-flight bookkeeping for this attempt has already been cleaned up
+    // by on_query_finalized().
     RMW_ZENOH_LOG_DEBUG_NAMED(
       "rmw_zenoh_cpp",
       "ClientData unable to call get");
     return RMW_RET_ERROR;
   }
   return RMW_RET_OK;
+}
+
+///=============================================================================
+void ClientData::on_query_finalized(int64_t sequence_id, std::size_t attempt)
+{
+  std::vector<uint8_t> request_payload;
+  std::size_t next_attempt = 0;
+  std::string service_name;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = in_flight_requests_.find(sequence_id);
+    if (it == in_flight_requests_.end()) {
+      return;
+    }
+    InFlightRequest & request = it->second;
+    if (request.attempts != attempt) {
+      // A newer attempt for this sequence_id has been issued; this drop
+      // notification is stale. Defensive: each attempt fires exactly one
+      // drop, so this should not happen.
+      return;
+    }
+    if (request.replied || this->is_shutdown()) {
+      // The request received a reply (possibly an error reply) before the
+      // query was finalized: the round-trip worked, nothing to retry.
+      in_flight_requests_.erase(it);
+      return;
+    }
+    if (issuing_query_on_this_thread) {
+      // querier_.get() failed synchronously and dropped the closure
+      // inline. Keep the original semantics: issue_query() reports the
+      // error to its caller; do not retry from here.
+      if (attempt > 1) {
+        RMW_ZENOH_LOG_ERROR_NAMED(
+          "rmw_zenoh_cpp",
+          "Service request to '%s' with sequence_id %" PRId64
+          " lost after %zu attempt(s): unable to re-issue the query.",
+          entity_->topic_info().value().name_.c_str(), sequence_id, attempt);
+      }
+      in_flight_requests_.erase(it);
+      return;
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - request.first_sent_time;
+    if (request.attempts >= 1 + service_request_max_retries() ||
+      elapsed >= service_request_retry_window())
+    {
+      RMW_ZENOH_LOG_ERROR_NAMED(
+        "rmw_zenoh_cpp",
+        "Service request to '%s' with sequence_id %" PRId64
+        " lost after %zu attempt(s).",
+        entity_->topic_info().value().name_.c_str(), sequence_id, request.attempts);
+      in_flight_requests_.erase(it);
+      return;
+    }
+    request.attempts++;
+    next_attempt = request.attempts;
+    request_payload = request.request_bytes;
+    service_name = entity_->topic_info().value().name_;
+  }
+  RMW_ZENOH_LOG_WARN_NAMED(
+    "rmw_zenoh_cpp",
+    "Query for service request to '%s' with sequence_id %" PRId64
+    " was finalized without a reply; re-issuing (attempt %zu of %zu).",
+    service_name.c_str(), sequence_id, next_attempt,
+    1 + service_request_max_retries());
+  // Re-issue outside mutex_ (see ros2/rmw_zenoh#484).
+  this->issue_query(sequence_id, next_attempt, request_payload);
+}
+
+///=============================================================================
+void ClientData::mark_query_replied(int64_t sequence_id)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = in_flight_requests_.find(sequence_id);
+  if (it != in_flight_requests_.end()) {
+    it->second.replied = true;
+  }
 }
 
 ///=============================================================================
@@ -514,6 +708,13 @@ rmw_ret_t ClientData::shutdown()
       std::memory_order_relaxed))
   {
     return RMW_RET_OK;
+  }
+
+  // Drop the in-flight request bookkeeping: no query will be retried once
+  // the client is shutdown, and the entries must not leak.
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    in_flight_requests_.clear();
   }
 
   // Unregister this node from the ROS graph.
