@@ -28,37 +28,44 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # By default, use commit id from branch ROS/zenoh-2687c5135.
-  # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  #
-  # botsandus/zenoh-c@dexory/fix-gossip-oam-deadlock carries the same 1.8.0 base
-  # plus a rebuild of Cargo.lock pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util
-  # at botsandus/zenoh@dexory/fix-gossip-oam-deadlock, which:
-  # - patches io/zenoh-transport/src/shm.rs to stop promoting query/reply payloads
-  #   to SHM (workaround for https://github.com/eclipse-zenoh/zenoh/issues/2628);
-  # - fixes the gossip/OAM ctrl_lock deadlock that randomly freezes one process
-  #   per bringup (https://github.com/eclipse-zenoh/zenoh/issues/2581): makes
-  #   StartConditions sync and drops both block_in_place sites;
-  # - fixes the undeclare-from-callback self-deadlock (SyncGroup::wait called
-  #   on the rx thread from ~SubscriptionData via ze_undeclare_advanced_subscriber
+  # botsandus/zenoh-c@dexory/fixes-1.10.0 = upstream zenoh-c main (post-1.9,
+  # synced with zenoh@3118e85) with Cargo manifests/locks pointing
+  # zenoh/zenoh-ext/zenoh-runtime/zenoh-util at
+  # botsandus/zenoh@dexory/fixes-1.10.0 = zenoh 1.10.0 plus:
+  # - the gossip/OAM ctrl_lock deadlock fix (StartConditions sync, both
+  #   block_in_place sites dropped — https://github.com/eclipse-zenoh/zenoh/issues/2581,
+  #   upstream PR #2637 still open);
+  # - the undeclare-from-callback self-deadlock fix (SyncGroup::wait called on
+  #   the rx thread from ~SubscriptionData via ze_undeclare_advanced_subscriber
   #   parks the rx thread forever): drains callbacks asynchronously in that case;
-  # - finalizes queries whose request fails transport scheduling (closed/closing
-  #   link under churn) instead of silently dropping them — service calls fail
-  #   fast and retryably instead of hanging their full timeout.
-  set(zenoh_c_commit 298d729e2744d9613dd267ea839ab712b04c355d)
+  # - finalization of queries whose request fails transport scheduling
+  #   (closed/closing link under churn) so service calls fail fast and
+  #   retryably instead of hanging their full timeout;
+  # - gossip linkstates advertising loopback locators again (regions redesign
+  #   #2096 dropped them): without this, peers listening only on loopback —
+  #   this package's default session config — never form the same-host mesh on
+  #   zenoh >= 1.10 and have NO data path (routers no longer broker data
+  #   between their south-bound peers).
+  # The 1.8-era query-no-shm patch is intentionally DROPPED: zenoh 1.10.0
+  # ships the SHM handoff (eclipse-zenoh/zenoh#2646) which fixes the
+  # underlying #2628 in-flight SHM invalidation.
+  # NOTE: VCS_URL temporarily references the local clone (file://); flip to
+  # https://github.com/botsandus/zenoh-c.git when the fork branch is pushed.
+  set(zenoh_c_commit 8348a4dbbb889645a321d3f7acbc75638621f6d6)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
   # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  # NOTE: this fallback does not carry the query-no-shm fix above.
+  # NOTE: this 1.8-era fallback carries NONE of the 1.10 fixes above and is
+  # unsupported for the dexory/fixes-1.10.0 line (zenoh 1.10 wire/SHM format
+  # is incompatible anyway) — kept only so the gate fails loudly at link time
+  # rather than silently mixing versions.
   if(CARGO_VERSION VERSION_GREATER_EQUAL "1.75" AND CARGO_VERSION VERSION_LESS "1.88")
-    set(zenoh_c_commit b31348fa7f94f44f1f7b049c111a710e970a2725)
+    message(FATAL_ERROR "dexory/fixes-1.10.0 requires Rust >= 1.88 (zenoh 1.10 MSRV); found ${CARGO_VERSION}")
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL https://github.com/botsandus/zenoh-c.git
+    VCS_URL file:///home/gd/dexory/zenoh-deadlock/zenoh-c
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
@@ -67,8 +74,11 @@ else()
   )
 
   ament_vendor(zenoh_cpp_vendor
+    # zenoh-cpp main tip (2026-08-13), in sync with zenoh-c main — required to
+    # match the zenoh-c 1.10 line above (the previous March-era pin 481b71bf
+    # pairs with zenoh-c 05bd370).
     VCS_URL https://github.com/eclipse-zenoh/zenoh-cpp
-    VCS_VERSION 481b71bf974f684ea75afb4243b0313646d545f9
+    VCS_VERSION 4cbb987cbf5f3329ce69fc7890c36ec7ac0ad95b
     CMAKE_ARGS
       -DZENOHCXX_ZENOHC=OFF
   )
