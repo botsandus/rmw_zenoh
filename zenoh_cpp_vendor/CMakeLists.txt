@@ -45,13 +45,18 @@ else()
   #   #2096 dropped them): without this, peers listening only on loopback —
   #   this package's default session config — never form the same-host mesh on
   #   zenoh >= 1.10 and have NO data path (routers no longer broker data
-  #   between their south-bound peers).
+  #   between their south-bound peers);
+  # - zenoh-ext history-retry: an AdvancedSubscriber re-queries an alive
+  #   publisher's undelivered TRANSIENT_LOCAL history with capped backoff
+  #   instead of giving up after the single initial query is lost under
+  #   transport churn (the fail-fast finalization above only makes that loss
+  #   prompt; nothing re-asked, so e.g. a 73MB latched map replayed to rviz
+  #   at startup arrived "in ~5s or never"). Heartbeat recovery cannot cover
+  #   this: a sporadic heartbeat only follows a *new* publication.
   # The 1.8-era query-no-shm patch is intentionally DROPPED: zenoh 1.10.0
   # ships the SHM handoff (eclipse-zenoh/zenoh#2646) which fixes the
   # underlying #2628 in-flight SHM invalidation.
-  # NOTE: VCS_URL temporarily references the local clone (file://); flip to
-  # https://github.com/botsandus/zenoh-c.git when the fork branch is pushed.
-  set(zenoh_c_commit 8348a4dbbb889645a321d3f7acbc75638621f6d6)
+  set(zenoh_c_commit 246857534e20cb07687985ac3cc5b228c16b406f)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
@@ -65,7 +70,7 @@ else()
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL file:///home/gd/dexory/zenoh-deadlock/zenoh-c
+    VCS_URL https://github.com/botsandus/zenoh-c.git
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
