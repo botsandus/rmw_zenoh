@@ -47,7 +47,7 @@ else()
   # - finalizes queries whose request fails transport scheduling (closed/closing
   #   link under churn) instead of silently dropping them — service calls fail
   #   fast and retryably instead of hanging their full timeout.
-  set(zenoh_c_commit 298d729e2744d9613dd267ea839ab712b04c355d)
+  set(zenoh_c_commit ff2828f094a1673cf788f3c93fe6a37b63ba4f91)
 
   # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
   # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
