@@ -28,21 +28,47 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # By default, use commit id from branch ROS/zenoh-2687c5135.
-  # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  set(zenoh_c_commit 05bd370343b5161ca9269649b9a914c9c2dc4170)
+  # botsandus/zenoh-c@dexory/fixes-1.10.1 = upstream zenoh-c 1.10.1 with the
+  # Cargo manifests/locks pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util at
+  # botsandus/zenoh@dexory/fixes-1.10.1 = zenoh 1.10.1 plus:
+  # - upstream PR #2779 (merged to main after 1.10.1 was cut): StartConditions
+  #   made sync, both block_in_place-under-ctrl_lock sites dropped -- the
+  #   gossip/OAM deadlock behind the random bringup freezes
+  #   (https://github.com/eclipse-zenoh/zenoh/issues/2581);
+  # - upstream PR #2744 (still open): zenoh-ext AdvancedSubscriber and
+  #   QueryingSubscriber no longer call user code while holding their state
+  #   lock, so a sample callback that destroys its own subscription
+  #   (~SubscriptionData -> ze_undeclare_advanced_subscriber) cannot
+  #   self-deadlock the rx thread on that lock any more;
+  # - the undeclare-from-callback self-deadlock fix in the core
+  #   SyncGroup::wait (ze_undeclare_* call undeclare().wait_callbacks().wait();
+  #   from inside the running callback that waits for its own permit): drains
+  #   callbacks asynchronously in that case;
+  # - finalization of queries whose request fails transport scheduling
+  #   (closed/closing link under churn) so service calls fail fast and
+  #   retryably instead of hanging their full timeout;
+  # - zenoh-ext history-retry: an AdvancedSubscriber re-queries an alive
+  #   publisher's undelivered TRANSIENT_LOCAL history with capped backoff
+  #   instead of giving up after the single initial query is lost under
+  #   transport churn (heartbeat recovery cannot cover this: a sporadic
+  #   heartbeat only follows a *new* publication).
+  # Dropped vs the 1.10.0 fork line: the gossip loopback-locator patch (1.10.1
+  # ships eclipse-zenoh/zenoh#2755, which advertises explicit loopback
+  # listeners such as this package's default `tcp/localhost:0`) and the
+  # subscriber teardown guard (covered by #2744). The 1.8-era query-no-shm
+  # patch stays dropped: zenoh >= 1.10.0 ships the SHM handoff (#2646) fixing
+  # the underlying in-flight SHM invalidation (#2628).
+  set(zenoh_c_commit 0c6a45efede4aa851d4e16753241d75069a72776)
 
-  # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  if(CARGO_VERSION VERSION_GREATER_EQUAL "1.75" AND CARGO_VERSION VERSION_LESS "1.88")
-    set(zenoh_c_commit b31348fa7f94f44f1f7b049c111a710e970a2725)
+  # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
+  # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
+  # format, so fail loudly instead of silently mixing versions.
+  if(CARGO_VERSION VERSION_LESS "1.88")
+    message(FATAL_ERROR "dexory/fixes-1.10.1 requires Rust >= 1.88 (zenoh 1.10 MSRV); found ${CARGO_VERSION}")
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL https://github.com/eclipse-zenoh/zenoh-c.git
+    VCS_URL https://github.com/botsandus/zenoh-c.git
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
@@ -52,7 +78,8 @@ else()
 
   ament_vendor(zenoh_cpp_vendor
     VCS_URL https://github.com/eclipse-zenoh/zenoh-cpp
-    VCS_VERSION 481b71bf974f684ea75afb4243b0313646d545f9
+    # zenoh-cpp 1.10.1 (tag), matching zenoh-c 1.10.1
+    VCS_VERSION 9626af8baa7535b6cea599a9cd56a7fc200a176b
     CMAKE_ARGS
       -DZENOHCXX_ZENOHC=OFF
   )
