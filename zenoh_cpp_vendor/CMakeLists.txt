@@ -28,21 +28,32 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # By default, use commit id from branch ROS/zenoh-2687c5135.
-  # It corresponding to zenoh-c 1.8.0 plus few fixes, including removal of a error log at closure causing #951
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/05bd370343b5161ca9269649b9a914c9c2dc4170/Cargo.lock#L4207
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  set(zenoh_c_commit 05bd370343b5161ca9269649b9a914c9c2dc4170)
+  # CONTROL VARIANT of dexory/fixes-1.10.1: upstream fixes only, none of the
+  # fork-only patches, to check whether those are still needed on zenoh 1.10.1.
+  #
+  # botsandus/zenoh-c@dexory/upstream-only-1.10.1 = upstream zenoh-c 1.10.1 with
+  # the Cargo manifests/locks pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util at
+  # botsandus/zenoh@dexory/upstream-only-1.10.1 = zenoh 1.10.1 plus ONLY:
+  # - upstream PR #2779 (merged to main after 1.10.1 was cut): StartConditions
+  #   made sync, both block_in_place-under-ctrl_lock sites dropped -- the
+  #   gossip/OAM deadlock behind the random bringup freezes
+  #   (https://github.com/eclipse-zenoh/zenoh/issues/2581);
+  # - upstream PR #2744 (still open): zenoh-ext AdvancedSubscriber and
+  #   QueryingSubscriber no longer call user code while holding their state lock.
+  # NOT carried here (present on dexory/fixes-1.10.1): the SyncGroup
+  # undeclare-from-callback fix, the Mux request-finalize fix, the zenoh-ext
+  # history-retry watchdog, and this package's service-request retry layer.
+  set(zenoh_c_commit 4404841c9ef49e9f3d0b60485d9975d33a388a7c)
 
-  # If Rust version below Zenoh MSRV (currently 1.88), use equivalent commit from branch ROS/rust-1.75-zenoh-2687c5135
-  # See https://github.com/eclipse-zenoh/zenoh-c/blob/b31348fa7f94f44f1f7b049c111a710e970a2725/Cargo.lock#L4237
-  # pointing to zenoh https://github.com/eclipse-zenoh/zenoh/commit/2687c51352121f006e3a603ce07925a8ad0b295c
-  if(CARGO_VERSION VERSION_GREATER_EQUAL "1.75" AND CARGO_VERSION VERSION_LESS "1.88")
-    set(zenoh_c_commit b31348fa7f94f44f1f7b049c111a710e970a2725)
+  # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
+  # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
+  # format, so fail loudly instead of silently mixing versions.
+  if(CARGO_VERSION VERSION_LESS "1.88")
+    message(FATAL_ERROR "dexory/upstream-only-1.10.1 requires Rust >= 1.88 (zenoh 1.10 MSRV); found ${CARGO_VERSION}")
   endif()
 
   ament_vendor(zenoh_c_vendor
-    VCS_URL https://github.com/eclipse-zenoh/zenoh-c.git
+    VCS_URL https://github.com/botsandus/zenoh-c.git
     VCS_VERSION ${zenoh_c_commit}
     CMAKE_ARGS
       "-DZENOHC_CARGO_FLAGS=${ZENOHC_CARGO_FLAGS}"
@@ -52,7 +63,8 @@ else()
 
   ament_vendor(zenoh_cpp_vendor
     VCS_URL https://github.com/eclipse-zenoh/zenoh-cpp
-    VCS_VERSION 481b71bf974f684ea75afb4243b0313646d545f9
+    # zenoh-cpp 1.10.1 (tag), matching zenoh-c 1.10.1
+    VCS_VERSION 9626af8baa7535b6cea599a9cd56a7fc200a176b
     CMAKE_ARGS
       -DZENOHCXX_ZENOHC=OFF
   )
