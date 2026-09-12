@@ -553,13 +553,15 @@ rmw_ret_t PublisherData::publish(
         shm_buf = std::make_optional(std::move(buf));
       } else {
         // Print a warning and revert to regular allocation
-        RMW_ZENOH_LOG_DEBUG_NAMED(
-          "rmw_zenoh_cpp", "Failed to allocate a SHM buffer, fallback to non-SHM");
+        RMW_ZENOH_LOG_WARN_NAMED(
+          "rmw_zenoh_cpp", "Failed to allocate a SHM buffer of %zu bytes for '%s', fallback to non-SHM",
+          static_cast<size_t>(max_data_length), entity_->topic_info().value().name_.c_str());
       }
     } else {
       // Print a warning and revert to regular allocation
-      RMW_ZENOH_LOG_DEBUG_NAMED(
-        "rmw_zenoh_cpp", "SHM provider is not yet available, fallback to non-SHM");
+      RMW_ZENOH_LOG_WARN_NAMED(
+        "rmw_zenoh_cpp", "SHM provider is not yet available for '%s' (%zu bytes), fallback to non-SHM",
+        entity_->topic_info().value().name_.c_str(), static_cast<size_t>(max_data_length));
     }
   }
 
@@ -679,13 +681,15 @@ rmw_ret_t PublisherData::publish_serialized_message(
         shm_buf = std::make_optional(std::move(buf));
       } else {
         // Print a warning and revert to regular allocation
-        RMW_ZENOH_LOG_DEBUG_NAMED(
-          "rmw_zenoh_cpp", "Failed to allocate a SHM buffer, fallback to non-SHM");
+        RMW_ZENOH_LOG_WARN_NAMED(
+          "rmw_zenoh_cpp", "Failed to allocate a SHM buffer of %zu bytes for '%s', fallback to non-SHM",
+          static_cast<size_t>(data_length), entity_->topic_info().value().name_.c_str());
       }
     } else {
       // Print a warning and revert to regular allocation
-      RMW_ZENOH_LOG_DEBUG_NAMED(
-        "rmw_zenoh_cpp", "SHM provider is not yet available, fallback to non-SHM");
+      RMW_ZENOH_LOG_WARN_NAMED(
+        "rmw_zenoh_cpp", "SHM provider is not yet available for '%s' (%zu bytes), fallback to non-SHM",
+        entity_->topic_info().value().name_.c_str(), static_cast<size_t>(data_length));
     }
   }
 
