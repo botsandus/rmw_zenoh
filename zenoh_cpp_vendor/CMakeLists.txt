@@ -43,7 +43,10 @@ else()
   # NOT carried here (present on dexory/fixes-1.10.1): the SyncGroup
   # undeclare-from-callback fix, the Mux request-finalize fix, the zenoh-ext
   # history-retry watchdog, and this package's service-request retry layer.
-  set(zenoh_c_commit 4404841c9ef49e9f3d0b60485d9975d33a388a7c)
+  # - diagnostics: SHM establishment failures (segment open, decoding,
+  #   challenge, handoff channel) are logged at WARN ("SHM disabled for this
+  #   link") so failed SHM links can be counted per bringup.
+  set(zenoh_c_commit dac406290c7bfcf285dc608cf184127fa2d9a714)
 
   # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
   # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
