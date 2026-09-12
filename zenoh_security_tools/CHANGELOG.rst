@@ -2,6 +2,9 @@
 Changelog for package zenoh_security_tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+
 0.10.5 (2026-07-22)
 -------------------
 

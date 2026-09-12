@@ -2,6 +2,17 @@
 Changelog for package rmw_zenoh_cpp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* Return topic info by const reference (`#1055 <https://github.com/ros2/rmw_zenoh/issues/1055>`_)
+* Remove unnecessary topic info locks (`#1049 <https://github.com/ros2/rmw_zenoh/issues/1049>`_)
+* Add rmw_zenoh_cpp to zenoh_cpp_vendor runtime dep (`#1045 <https://github.com/ros2/rmw_zenoh/issues/1045>`_)
+* Do not update wait_set_data triggered flag outside of mutex lock (`#1038 <https://github.com/ros2/rmw_zenoh/issues/1038>`_)
+* When SHM enabled, enable transport_optimization (`#1021 <https://github.com/ros2/rmw_zenoh/issues/1021>`_)
+* return early when unable to find any topic endpoints. (`#1019 <https://github.com/ros2/rmw_zenoh/issues/1019>`_)
+* return early with a zero-initialized array. (`#1018 <https://github.com/ros2/rmw_zenoh/issues/1018>`_)
+* Contributors: Julien Enoch, Maurice Alexander Purnawan, Scott K Logan, Tomoya Fujita, Yadunund
+
 0.10.5 (2026-07-22)
 -------------------
 * Fix transient-local publishing for buffer-aware path (`#1011 <https://github.com/ros2/rmw_zenoh/issues/1011>`_)
