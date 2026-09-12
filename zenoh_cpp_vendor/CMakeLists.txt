@@ -58,7 +58,10 @@ else()
   # subscriber teardown guard (covered by #2744). The 1.8-era query-no-shm
   # patch stays dropped: zenoh >= 1.10.0 ships the SHM handoff (#2646) fixing
   # the underlying in-flight SHM invalidation (#2628).
-  set(zenoh_c_commit 0c6a45efede4aa851d4e16753241d75069a72776)
+  # - diagnostics: SHM establishment failures (segment open, decoding,
+  #   challenge, handoff channel) are logged at WARN ("SHM disabled for this
+  #   link") so failed SHM links can be counted per bringup.
+  set(zenoh_c_commit 5a91be029bcec331d5bcf02dfda6682fc91285c5)
 
   # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
   # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
