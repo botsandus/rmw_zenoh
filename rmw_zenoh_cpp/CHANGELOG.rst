@@ -2,8 +2,8 @@
 Changelog for package rmw_zenoh_cpp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.10.6 (2026-09-11)
+-------------------
 * Return topic info by const reference (`#1055 <https://github.com/ros2/rmw_zenoh/issues/1055>`_)
 * Remove unnecessary topic info locks (`#1049 <https://github.com/ros2/rmw_zenoh/issues/1049>`_)
 * Add rmw_zenoh_cpp to zenoh_cpp_vendor runtime dep (`#1045 <https://github.com/ros2/rmw_zenoh/issues/1045>`_)
