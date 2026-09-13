@@ -28,9 +28,9 @@ else()
   include(get_cargo_version.cmake)
   get_cargo_version()
 
-  # botsandus/zenoh-c@dexory/fixes-1.10.1 = upstream zenoh-c 1.10.1 with the
+  # botsandus/zenoh-c@dexory/reconnect-1.10.1 = upstream zenoh-c 1.10.1 with the
   # Cargo manifests/locks pointing zenoh/zenoh-ext/zenoh-runtime/zenoh-util at
-  # botsandus/zenoh@dexory/fixes-1.10.1 = zenoh 1.10.1 plus:
+  # botsandus/zenoh@dexory/reconnect-1.10.1 = zenoh 1.10.1 plus:
   # - upstream PR #2779 (merged to main after 1.10.1 was cut): StartConditions
   #   made sync, both block_in_place-under-ctrl_lock sites dropped -- the
   #   gossip/OAM deadlock behind the random bringup freezes
@@ -61,7 +61,14 @@ else()
   # - diagnostics: SHM establishment failures (segment open, decoding,
   #   challenge, handoff channel) are logged at WARN ("SHM disabled for this
   #   link") so failed SHM links can be counted per bringup.
-  set(zenoh_c_commit 5a91be029bcec331d5bcf02dfda6682fc91285c5)
+  # - peer reconnect after an unexpected transport loss: a gossip-learned peer
+  #   whose transport ends without a graceful Close (link error, lease expiry,
+  #   or the peer closing us as UNRESPONSIVE/EXPIRED at its wait_before_close)
+  #   is re-connected with the connect/retry backoff for up to 60 s. Upstream
+  #   only retries configured connect endpoints and routers no longer broker
+  #   between peers, so such a loss otherwise partitions the two nodes until
+  #   one restarts. Kill switch: scouting/gossip/reconnect_on_close=false.
+  set(zenoh_c_commit 8c1df6df62caa66e61e08ff149d029c7450efdfe)
 
   # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
   # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
