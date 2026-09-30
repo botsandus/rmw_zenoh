@@ -61,7 +61,7 @@ else()
   # - diagnostics: SHM establishment failures (segment open, decoding,
   #   challenge, handoff channel) are logged at WARN ("SHM disabled for this
   #   link") so failed SHM links can be counted per bringup.
-  set(zenoh_c_commit 2af8513c254597e08bcf2e632a00f54ff8ae45b1)
+  set(zenoh_c_commit 5957b4e825f35ec93ffc2fc5f3784e3af073cd97)
 
   # zenoh 1.10 requires Rust >= 1.88. The upstream 1.75 fallback commit is a
   # 1.8-era zenoh-c with none of the fixes above and an incompatible wire/SHM
