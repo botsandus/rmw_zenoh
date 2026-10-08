@@ -96,6 +96,9 @@ public:
   // Detach any attached wait set condition variable, and return whether there is data in the queue.
   bool detach_condition_and_queue_is_empty();
 
+  // Shutdown this ClientData.
+  rmw_ret_t shutdown();
+
   // Check if this ClientData is shutdown.
   bool is_shutdown() const;
 
@@ -151,9 +154,6 @@ private:
 
   // Record that a reply (ok or error) was received for `sequence_id`.
   void mark_query_replied(int64_t sequence_id);
-
-  // Shutdown this ClientData.
-  rmw_ret_t shutdown();
 
   // Internal mutex.
   mutable std::mutex mutex_;
