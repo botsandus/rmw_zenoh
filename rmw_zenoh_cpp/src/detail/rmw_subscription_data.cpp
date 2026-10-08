@@ -99,8 +99,13 @@ std::shared_ptr<SubscriptionData> SubscriptionData::make(
   const bool has_buffer_fields = callbacks->has_buffer_fields;
   // A transient-local subscription can only receive history through its base
   // advanced subscriber, so its custom buffer endpoints would never provide it.
-  const bool use_buffer_endpoints = has_buffer_fields &&
-    adapted_qos_profile.durability != RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  // Buffer-aware per-endpoint pub/sub (ros2/rmw_zenoh#930) is disabled: with
+  // only the cpu backend installed it brings no zero-copy benefit, publishes
+  // nothing until a subscriber is discovered through liveliness, and moves the
+  // data to <key>/_buf_cpu, which plain zenoh subscribers (robot-manager's
+  // hiroz) never see. Publish and subscribe on the base key expression instead.
+  (void)has_buffer_fields;
+  const bool use_buffer_endpoints = false;
 
   RMW_ZENOH_LOG_DEBUG_NAMED(
     "rmw_zenoh_cpp",

@@ -95,8 +95,13 @@ std::shared_ptr<PublisherData> PublisherData::make(
   const bool has_buffer_fields = callbacks->has_buffer_fields;
   // Buffer backends do not support transient-local durability. Those publishers
   // use only the base Zenoh publisher, which provides the required history cache.
-  const bool use_buffer_endpoints = has_buffer_fields &&
-    adapted_qos_profile.durability != RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  // Buffer-aware per-endpoint pub/sub (ros2/rmw_zenoh#930) is disabled: with
+  // only the cpu backend installed it brings no zero-copy benefit, publishes
+  // nothing until a subscriber is discovered through liveliness, and moves the
+  // data to <key>/_buf_cpu, which plain zenoh subscribers (robot-manager's
+  // hiroz) never see. Publish and subscribe on the base key expression instead.
+  (void)has_buffer_fields;
+  const bool use_buffer_endpoints = false;
 
   RMW_ZENOH_ROSIDL_BUFFER_LOG_DEBUG_NAMED("rmw_zenoh_cpp",
     "[PublisherData::make] Creating publisher for topic '%s', "
