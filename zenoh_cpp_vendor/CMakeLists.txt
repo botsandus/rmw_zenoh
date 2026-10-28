@@ -31,7 +31,7 @@ else()
   # Coordinated Hiroz/ROS core: Zenoh 1.10.2 plus reviewed transport fixes.
   # The wrapper's manifests and opaque-type generator pin the same full core SHA.
   # Entity destruction uses upstream rmw_zenoh #994; no core drain bypass is used.
-  set(zenoh_c_commit 5dd2a5ddd7c6c74cc6228383d368ae3a04d76909)
+  set(zenoh_c_commit 3eab5140522a61b7de328a58d2e0ba4f7e565b38)
   if(CARGO_VERSION VERSION_LESS "1.88")
     message(FATAL_ERROR "The coordinated Zenoh 1.10.2 candidate requires Rust >= 1.88; found ${CARGO_VERSION}")
   endif()

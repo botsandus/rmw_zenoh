@@ -8,7 +8,7 @@ Entity shutdown includes upstream `ros2/rmw_zenoh#994`, applied separately from
 the dependency update. It destroys middleware entities on the application thread
 and preserves callback draining instead of relying on the older core bypass.
 
-The vendor package pins Zenoh-C `5dd2a5ddd7c6c74cc6228383d368ae3a04d76909` and Zenoh-C++
+The vendor package pins Zenoh-C `3eab5140522a61b7de328a58d2e0ba4f7e565b38` and Zenoh-C++
 `20eb0bef670e150d3750ca0739dcb28cd7909e2e`. Zenoh-C pins core
 `0acbd21e9358c50e4b129111f024b7576c589889`.
 Build both `rmw_zenoh_cpp` and `rmw_zenohd` from this vendor cohort.
